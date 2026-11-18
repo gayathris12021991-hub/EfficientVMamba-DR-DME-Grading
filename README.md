@@ -12,15 +12,12 @@ The framework is evaluated using the Indian Diabetic Retinopathy Image Dataset (
 
 The proposed architecture consists of four main components:
 
-1. **EfficientVMamba-S Backbone:** Extracts shared retinal representations using visual state-space processing, efficient 2D scanning, convolutional pathways, and Squeeze-and-Excitation refinement.
-
-2. **Task-Specific Feature Decomposition:** Projects shared visual tokens into separate DR and DME feature representations.
-
-3. **Bidirectional DR–DME Cross-Task Attention:** Enables reciprocal information exchange between the two task-specific representations through token-level scaled dot-product attention.
-
-4. **Task-Specific Classification Heads:**
-   - DR grading: CORAL-style ordinal classification with five severity grades.
-   - DME risk grading: Three-class softmax classification.
+- **EfficientVMamba-S Backbone:** Extracts shared retinal representations using visual state-space processing, efficient 2D scanning, convolutional pathways, and Squeeze-and-Excitation refinement.
+- **Task-Specific Feature Decomposition:** Projects shared visual tokens into separate DR and DME feature representations.
+- **Bidirectional DR–DME Cross-Task Attention:** Enables reciprocal information exchange between the two task-specific representations through token-level scaled dot-product attention.
+- **Task-Specific Classification Heads:**
+  - DR grading: CORAL-style ordinal classification with five severity grades.
+  - DME risk grading: Three-class softmax classification.
 
 The training configuration is optimized using Adaptive Hare Escape Optimization (AHEO).
 
@@ -40,23 +37,21 @@ The training configuration is optimized using Adaptive Hare Escape Optimization 
 
 The dataset contains 516 color fundus images with two annotations:
 
-- DR severity: Five classes (Grade 0–4).
-- DME risk: Three classes (Grade 0–2).
+- **DR severity:** Five classes (Grade 0–4).
+- **DME risk:** Three classes (Grade 0–2).
 
 ### Dataset Partitioning
 
 | Subset | Number of images |
-|---|---:|
+|---|---|
 | Training | 330 |
 | Validation | 83 |
 | Held-out testing | 103 |
 | **Total** | **516** |
 
-The 413 development images were divided into training and validation subsets using an image-level random split with `random_state=42`.
+The 413 development images were divided into training and validation subsets using an image-level random split (scikit-learn `train_test_split`, `test_size = 0.2`, `random_state = 42`, without stratification).
 
 The official 103-image test partition was kept separate from training and hyperparameter optimization.
-
-**Important:** The DME labels represent fundus-derived risk grades based on the presence and location of hard exudates relative to the macula. They should not be interpreted as clinically confirmed DME diagnoses.
 
 ### Dataset Access
 
@@ -65,7 +60,6 @@ The IDRiD dataset is available through its official distribution and associated 
 Dataset reference:
 
 Kazeminezhad, *Indian Diabetic Retinopathy Image Dataset (IDRiD)—Segmentation, Grading & Localization ZIP Files*, Zenodo (2025).
-
 DOI: https://doi.org/10.5281/zenodo.17219542
 
 Please follow the dataset's applicable terms of use.
@@ -91,13 +85,19 @@ The proposed Adaptive Hare Escape Optimization (AHEO) strategy is used to identi
 
 Five hyperparameters are optimized:
 
-| Hyperparameter | Search range |
-|---|---|
-| Learning rate | 1 × 10⁻⁵ – 1 × 10⁻³ |
-| Batch size | 8–32 |
-| Weight decay | 1 × 10⁻⁶ – 1 × 10⁻³ |
-| Dropout | 0.1–0.5 |
-| Training epochs | 50–150 |
+| Hyperparameter | Search range | Encoding |
+|---|---|---|
+| Learning rate | 1 × 10⁻⁵ – 1 × 10⁻³ | log₁₀-uniform |
+| Batch size | 8–32 | integer |
+| Weight decay | 1 × 10⁻⁶ – 1 × 10⁻³ | log₁₀-uniform |
+| Dropout | 0.1–0.5 | uniform (continuous) |
+| Training epochs | 50–150 | integer |
+
+All four optimizers (random search, Optuna-TPE, HEO, and AHEO) use the same encoded search space. Learning rate and weight decay are searched in log₁₀ space: random search samples them log-uniformly, Optuna-TPE uses logarithmic float parameters, and HEO/AHEO perform position updates, normalization, and diversity computation in log₁₀-encoded coordinates.
+
+**AHEO settings:** population size M = 10, iterations T = 10, Lévy-flight β = 1.5, k_D = 0.50, k_I = 1.00, γ ∈ [0.50, 1.50]. Each candidate is trained for a proxy length of round(0.2E) epochs, and the selected configuration is retrained at full length.
+
+**Fitness function:** J = 0.5 (1 − macro-F1_DR) + 0.5 (1 − macro-F1_DME), computed on the validation subset.
 
 ### Selected Configuration
 
@@ -114,30 +114,31 @@ Five hyperparameters are optimized:
 | Gradient clipping | Global norm 1.0 |
 | Random seed | 42 |
 
-The main optimizer comparison used 110 fitness evaluations per optimizer. An additional repeated-seed comparison was conducted using five independent seeds and a matched budget of 50 evaluations per run.
+The main optimizer comparison used 110 fitness evaluations per optimizer. An additional repeated-seed comparison used five seeds (42, 101, 202, 303, 404) with a matched budget of 50 evaluations per run. Within each seed, all optimizers start from the same ten initial candidates, so the results are paired by seed and compared with the exact two-sided Wilcoxon signed-rank test with Holm correction.
 
 ## Experimental Environment
 
 The experiments were conducted using:
 
-- Programming language: Python
-- Deep learning framework: PyTorch
-- GPU environment: Google Colaboratory
-- GPU: NVIDIA Tesla T4 (16 GB VRAM)
-- Image processing: OpenCV
-- Numerical computation: NumPy
-- Data augmentation: Albumentations
+- **Programming language:** Python
+- **Deep learning framework:** PyTorch
+- **GPU environment:** Google Colaboratory
+- **GPU:** NVIDIA Tesla T4 (16 GB VRAM)
+- **Image processing:** OpenCV
+- **Numerical computation:** NumPy
+- **Data augmentation:** Albumentations
 
-Exact software package versions should be specified in the accompanying environment configuration.
 
 ## Experimental Results
+
+All validation metrics (macro-F1, per-grade recall, and the objective J) are computed from the same validation confusion matrices (83 images). The final configuration reached a validation macro-F1 of 97.13% (DR) and 97.64% (DME), giving J = 0.0262.
 
 The proposed framework achieved the following performance on the official 103-image IDRiD test set.
 
 ### Diabetic Retinopathy Grading
 
 | Metric | Result |
-|---|---:|
+|---|---|
 | Accuracy | 98.06% |
 | Matthews Correlation Coefficient (MCC) | 97.38% |
 | Cohen's Kappa | 97.38% |
@@ -148,7 +149,7 @@ The proposed framework achieved the following performance on the official 103-im
 ### Diabetic Macular Edema Risk Grading
 
 | Metric | Result |
-|---|---:|
+|---|---|
 | Accuracy | 99.03% |
 | Matthews Correlation Coefficient (MCC) | 98.34% |
 | Cohen's Kappa | 98.32% |
